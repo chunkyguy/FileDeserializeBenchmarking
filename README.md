@@ -2,6 +2,7 @@ FileDeserializeBenchmarking
 ===========================
 
 ## Results
+```
 "-========== START TESTING ==========-"
 "iterations : 1"
 
@@ -42,8 +43,9 @@ FileDeserializeBenchmarking
 "247503µs : PListDecoder"
 
 "-========== TEST ENDED ==========-"
+```
 
-
+```
 "-========== START TESTING ==========-"
 "iterations : 10"
 
@@ -84,7 +86,9 @@ FileDeserializeBenchmarking
 "2408213µs : PListDecoder"
 
 "-========== TEST ENDED ==========-"
+```
 
+```
 "-========== START TESTING ==========-"
 "iterations : 100"
 
@@ -125,8 +129,9 @@ FileDeserializeBenchmarking
 "24155329µs : PListDecoder"
 
 "-========== TEST ENDED ==========-"
+```
 
-
+```
 "-========== START TESTING ==========-"
 "iterations : 1000"
 
@@ -167,6 +172,7 @@ FileDeserializeBenchmarking
 "238232ms : PlistDecoder"
 
 "-========== TEST ENDED ==========-"
+```
 
 ## Credits
 
