@@ -9,7 +9,7 @@ import Foundation
 import CoreGraphics
 import UIKit
 
-private let kNumberOfIterations = 1_000
+private let kNumberOfIterations = 1
 private let kMaxDataset = 100_000
 
 enum BenchmarkError: Error {
@@ -27,15 +27,10 @@ struct User: Codable {
     self.lastName = lastName
   }
 
-  init?(_ dict: NSDictionary) {
-    guard
-      let uid = dict["uid"] as? Int,
-      let firstName = dict["firstName"] as? String,
-      let lastName = dict["lastName"] as? String else {
-      return nil
-    }
-
-    self.init(uid: uid, firstName: firstName, lastName: lastName)
+  init(_ dict: NSDictionary) {
+    self.uid = dict["uid"] as! Int
+    self.firstName = dict["firstName"] as! String
+    self.lastName = dict["lastName"] as! String
   }
 }
 
@@ -47,11 +42,8 @@ struct List: Codable {
   }
 
   init?(_ dict: NSDictionary) {
-    guard let userDicts = dict["List"] as? [NSDictionary] else {
-      return nil
-    }
-    let list = userDicts.compactMap { User($0) }
-    self.init(List: list)
+    let userDicts = dict["List"] as! [NSDictionary]
+    self.List = userDicts.map { User($0) }
   }
 }
 
@@ -60,47 +52,56 @@ enum ContentType: String, CaseIterable {
   case plist
 }
 
-struct File {
+struct File: Hashable {
   var name: String { "data_dictionary_root_\(size)" }
 
   var size: Int
   var type: ContentType
 }
 
-enum Parser: String, CaseIterable {
-  case old
-  case new
+enum ParserType: String, CaseIterable {
+  case classic
+  case modern
 }
 
 func runBenchmark() {
-  debugPrint("-========== START TESTING on %@ ==========-")
+  debugPrint("-========== START TESTING ==========-")
+  debugPrint("iterations : \(kNumberOfIterations)")
 
-  var files: [File] = []
+  var fileSizes: [Int] = []
   var i = 1
   while i <= kMaxDataset {
-    for contentType in ContentType.allCases {
-      files.append(File(size: i, type: contentType))
-    }
+    fileSizes.append(i)
     i *= 10
   }
 
   // load files
-  var contents: [(File, Data)] = []
-  for file in files {
-    contents.append((file, try! load(file: file)))
-  }
-
-  for (file, data) in contents {
-    let results = Parser.allCases.map {
-      ($0, parse(data: data, parser: $0, file: file))
-    }
-
-    debugPrint("type:\(file.type.rawValue)", "fileSize:\(file.size):")
-    for (parser, t) in results {
-      debugPrint("  time([ms): \(t.toMilli)", "parser:\(parserName(parser: parser, file: file))")
+  var contents: [File: Data] = [:]
+  for fileSize in fileSizes {
+    for type in ContentType.allCases {
+      let file = File(size: fileSize, type: type)
+      contents[file] = try! load(file: file)
     }
   }
 
+  for fileSize in fileSizes {
+    var results: [(ContentType, ParserType, Double)] = []
+    for type in ContentType.allCases {
+      let file = File(size: fileSize, type: type)
+      for parser in ParserType.allCases {
+        let t = parse(data: contents[file]!, parser: parser, file: file)
+        results.append((type, parser, t))
+      }
+    }
+
+    debugPrint()
+    debugPrint("fileSize : \(fileSize)x:")
+    for (type, parser, t) in results {
+      debugPrint("\(t.toMicro)µs : \(parserName(parser: parser, type: type))")
+    }
+  }
+
+  debugPrint()
   debugPrint("-========== TEST ENDED ==========-");
 }
 
@@ -111,38 +112,40 @@ func load(file: File) throws -> Data {
   return try Data(contentsOf: filePath)
 }
 
-func parse(data: Data, parser: Parser, file: File) -> Double {
+func parse(data: Data, parser: ParserType, file: File) -> Double {
   let startTime = CACurrentMediaTime()
+
   for _ in 0..<kNumberOfIterations {
     switch (file.type, parser) {
-    case (.json, .old):
+    case (.json, .classic):
       let object = try! JSONSerialization.jsonObject(with: data) as! NSDictionary
       let list = List(object)!
       assert(list.List.count == file.size)
 
-    case (.json, .new):
+    case (.json, .modern):
       let list = try! JSONDecoder().decode(List.self, from: data)
       assert(list.List.count == file.size)
 
-    case (.plist, .old):
+    case (.plist, .classic):
       let object = try! PropertyListSerialization.propertyList(from: data, format: nil) as! NSDictionary
       let list = List(object)!
       assert(list.List.count == file.size)
 
-    case (.plist, .new):
+    case (.plist, .modern):
       let list = try! PropertyListDecoder().decode(List.self, from: data)
       assert(list.List.count == file.size)
     }
   }
+
   return CACurrentMediaTime() - startTime
 }
 
-func parserName(parser: Parser, file: File) -> String {
-  switch (file.type, parser) {
-  case (.json, .old): return "JSONSerialization"
-  case (.json, .new): return "JSONDecoder"
-  case (.plist, .old): return "PListSerialization"
-  case (.plist, .new): return "PListDecoder"
+func parserName(parser: ParserType, type: ContentType) -> String {
+  switch (type, parser) {
+  case (.json, .classic): return "JSONSerialization"
+  case (.json, .modern): return "JSONDecoder"
+  case (.plist, .classic): return "PListSerialization"
+  case (.plist, .modern): return "PListDecoder"
   }
 }
 
