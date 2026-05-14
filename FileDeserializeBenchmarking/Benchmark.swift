@@ -9,7 +9,7 @@ import Foundation
 import CoreGraphics
 import UIKit
 
-private let kNumberOfIterations = 1
+private let kMaxIterations = 1_00
 private let kMaxDataset = 100_000
 
 enum BenchmarkError: Error {
@@ -65,14 +65,11 @@ enum ParserType: String, CaseIterable {
 }
 
 func runBenchmark() {
-  debugPrint("-========== START TESTING ==========-")
-  debugPrint("iterations : \(kNumberOfIterations)")
-
   var fileSizes: [Int] = []
-  var i = 1
-  while i <= kMaxDataset {
-    fileSizes.append(i)
-    i *= 10
+  var fileSize = 1
+  while fileSize <= kMaxDataset {
+    fileSizes.append(fileSize)
+    fileSize *= 10
   }
 
   // load files
@@ -84,25 +81,43 @@ func runBenchmark() {
     }
   }
 
+  var iteration = 1
+  while iteration <= kMaxIterations {
+    autoreleasepool {
+      runBenchmark(iterations: iteration, fileSizes: fileSizes, contents: contents)
+    }
+    iteration *= 10
+  }
+}
+
+func runBenchmark(iterations: Int, fileSizes: [Int], contents: [File: Data]) {
+
+  print("```")
+  print("-========== START TESTING ==========-")
+  print("iterations : \(iterations)")
+
   for fileSize in fileSizes {
     var results: [(ContentType, ParserType, Double)] = []
     for type in ContentType.allCases {
       let file = File(size: fileSize, type: type)
       for parser in ParserType.allCases {
-        let t = parse(data: contents[file]!, parser: parser, file: file)
+        let t = parse(data: contents[file]!, parser: parser, file: file, iterations: iterations)
         results.append((type, parser, t))
       }
     }
 
-    debugPrint()
-    debugPrint("fileSize : \(fileSize)x:")
+    print("\n\nfileSize : \(fileSize)x:\n")
+    print("| Parser | Time (µs) |")
+    print("| ------------- | ------------- |")
     for (type, parser, t) in results {
-      debugPrint("\(t.toMicro)µs : \(parserName(parser: parser, type: type))")
+      print("| \(parserName(parser: parser, type: type)) | \(t.toMicro) |")
     }
   }
 
-  debugPrint()
-  debugPrint("-========== TEST ENDED ==========-");
+  print("\n")
+  print("-========== TEST ENDED ==========-");
+  print("```")
+  print("\n")
 }
 
 func load(file: File) throws -> Data {
@@ -112,28 +127,30 @@ func load(file: File) throws -> Data {
   return try Data(contentsOf: filePath)
 }
 
-func parse(data: Data, parser: ParserType, file: File) -> Double {
+func parse(data: Data, parser: ParserType, file: File, iterations: Int) -> Double {
   let startTime = CACurrentMediaTime()
 
-  for _ in 0..<kNumberOfIterations {
-    switch (file.type, parser) {
-    case (.json, .classic):
-      let object = try! JSONSerialization.jsonObject(with: data) as! NSDictionary
-      let list = List(object)!
-      assert(list.List.count == file.size)
+  for _ in 0..<iterations {
+    autoreleasepool {
+      switch (file.type, parser) {
+      case (.json, .classic):
+        let object = try! JSONSerialization.jsonObject(with: data) as! NSDictionary
+        let list = List(object)!
+        assert(list.List.count == file.size)
 
-    case (.json, .modern):
-      let list = try! JSONDecoder().decode(List.self, from: data)
-      assert(list.List.count == file.size)
+      case (.json, .modern):
+        let list = try! JSONDecoder().decode(List.self, from: data)
+        assert(list.List.count == file.size)
 
-    case (.plist, .classic):
-      let object = try! PropertyListSerialization.propertyList(from: data, format: nil) as! NSDictionary
-      let list = List(object)!
-      assert(list.List.count == file.size)
+      case (.plist, .classic):
+        let object = try! PropertyListSerialization.propertyList(from: data, format: nil) as! NSDictionary
+        let list = List(object)!
+        assert(list.List.count == file.size)
 
-    case (.plist, .modern):
-      let list = try! PropertyListDecoder().decode(List.self, from: data)
-      assert(list.List.count == file.size)
+      case (.plist, .modern):
+        let list = try! PropertyListDecoder().decode(List.self, from: data)
+        assert(list.List.count == file.size)
+      }
     }
   }
 
